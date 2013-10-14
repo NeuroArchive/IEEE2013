@@ -1,55 +1,12 @@
 import numpy as np
-
-def cartesian(arrays, out=None):
-    """Generate a cartesian product of input arrays.
-
-    PARAMETERS
-    -----
-    arrays : list of array-like
-    1-D arrays to form the cartesian product of.
-    out : ndarray
-    Array to place the cartesian product in.
-
-    RETURNS
-    -----
-    out : ndarray
-    2-D array of shape (M, len(arrays)) containing cartesian products
-    formed of input arrays.
-
-    EXAMPLES
-    -----
-    >>> cartesian(([1, 2, 3], [4, 5], [6, 7]))
-    array([[1, 4, 6],
-           [1, 4, 7],
-           [1, 5, 6],
-           [1, 5, 7],
-           [2, 4, 6],
-           [2, 4, 7],
-           [2, 5, 6],
-           [2, 5, 7],
-           [3, 4, 6],
-           [3, 4, 7],
-           [3, 5, 6],
-           [3, 5, 7]])
-
-    """
-    arrays = [np.asarray(x) for x in arrays]
-    dtype = arrays[0].dtype
-
-    n = np.prod([x.size for x in arrays])
-    if out is None:
-        out = np.zeros([n, len(arrays)], dtype=dtype)
-
-    m = n / arrays[0].size
-    out[:,0] = np.repeat(arrays[0], m)
-    if arrays[1:]:
-        cartesian(arrays[1:], out=out[0:m,1:])
-        for j in xrange(1, arrays[0].size):
-            out[j*m:(j+1)*m,1:] = out[0:m,1:]
-    return out
+import matplotlib.pyplot as plt
+from traits.api import HasTraits, Int, Array, Bool
+from itertools import combinations_with_replacement as comb
+from itertools import product as prod
+import re
 
 
-def iptgen(n=4,ex=[2]):
+def iptgen(n):
     """Generate a set of input vector with n components and containing
     equal/different number of ones given ex
 
@@ -57,90 +14,26 @@ def iptgen(n=4,ex=[2]):
     ----------
     n : int
         number of components in each vectors
-    ex : list
-        numbers of 1 in each vector
 
     Returns
     -------
     ipt : array int
         set of 0/1 vectors to be classified
-
-    expamples
-    ---------
-    >>> iptgen(n=4, ex=[2])
-    array([[0,0,1,1],
-           [0,1,0,1],
-           [0,1,1,0],
-           [1,0,0,1],
-           [1 0 1 0],
-           [1 1,0,0]])
     """
-    #Generate the complete set of vectors using binary representation
     ipt = [[int(j) for j in np.binary_repr(i, n)] for i in range(2**n)]
-    #This trace vector enable to to pick the desired vectors
-    tr = np.zeros(2**n, dtype=np.int)
-    for i in ex:
-        tr += np.sum(ipt, axis=1) == i
-    #Selecting the vectors
-    ipt = np.repeat(ipt, tr >= 1, axis=0)
-    return ipt
+    return np.array(ipt, dtype=np.int)
 
 
-def integration_result (n, min_weight, max_weight):
-    """Generate the list of all possible integration result
-    and the associated parameter set
+def uniquify_function(functions, parameters):
+    """uniquify the list of function and the associated parameters
+    take from a stackoverflow thread"""
+    temp = np.ascontiguousarray(functions).view(np.dtype((np.void, functions.dtype.itemsize * functions.shape[1])))
+    _, idx = np.unique(temp, return_index=True)
 
-    Parameters
-    ----------
-    n: int
-        number of input variables
-    min_weight, max_weight: ints
-        minimal and maximal value for the weights
+    functions = functions[idx]
+    parameters = parameters[idx]
 
-    Returns
-    -----
-    par: a 2-d array
-    syn: a 2-d array of size p x len(ipt)
-    subunit: the quadruplet describing the subunit
-
-    """
-    #Generate the complete set of vectors
-    ipt = iptgen(n,range(n+1))
-    ipt = np.rot90(ipt)
-
-    #Generate all possible set of vectors
-    weights = cartesian(np.repeat([np.arange(min_weight, max_weight+1)],n,axis=0))
-    integration = np.dot(weights, ipt)
-
-    return integration.astype(np.int), weights.astype(np.int)
-
-
-def threshold_integration(integration, weights, min_threshold, max_threshold):
-    """Threshold the result of an integration and output the result"""
-    int_0 = integration.shape[0]
-    int_1 = integration.shape[1]
-    #Because lists end one time before the max_threshold
-    n_threshold = max_threshold - min_threshold + 1
-    output = np.zeros((int_0 * n_threshold,
-                       int_1), dtype=np.int)
-    parameters = np.zeros((int_0 * n_threshold,
-                           weights.shape[1] + 1), dtype=np.int)
-    for i in range(min_threshold, max_threshold + 1):
-        thresholds = np.ones((weights.shape[0],1)) * i
-        i_s = i - min_threshold
-        parameters[i_s*int_0:(i_s+1)*int_0,:] = np.concatenate((weights, thresholds), axis=1)
-        output[i_s*int_0:(i_s+1)*int_0,:] = integration >= i
-
-    return output, parameters
-
-def uniquify_function(output, parameters):
-    """uniquify the list of function and the associated parameters"""
-    functions, uindex = np.unique(output.view([('',output.dtype)]*output.shape[1]),
-                                    return_index=True)
-    output = output[uindex]
-    parameters = parameters[uindex]
-
-    return output, parameters
+    return functions, parameters
 
 def signal_theory_analysis(ftar,f):
     """Return the (hits, false alarm) couple given a target
@@ -169,3 +62,141 @@ def signal_theory_analysis(ftar,f):
     sen = float(TP)/(TP+FN)
 
     return 1-spe, sen
+
+def select_subset(n, sparsity):
+    """Select a subset of input of a given sparsity
+
+    Parameters
+    ----------
+    n: an int
+        number of component of a vector
+    sparsity: an int
+        number of 1s per vector
+    """
+    #This trace vector enable to to pick the desired vectors
+    ipt = iptgen(n)
+    selection = np.sum(ipt, axis=1) == sparsity
+    return selection
+
+def select_functions(selection):
+    """Create a list for selecting the column in the set of functions"""
+    return [i for i, test in enumerate(selection) if test]
+
+class PossibleSetTlu(HasTraits):
+    """Wrapper of the different functions"""
+    n = Int(4)
+    w_min = Int(0)
+    w_max = Int(3)
+    t_min = Int(0)
+    t_max = Int(5)
+    sparsity = Int(-1)
+    order = Bool(True)
+    parameters = Array(dtype=np.int)
+    functions = Array(dtype=np.int)
+    ipt = Array(dtype=np.int)
+
+    def __init__(self):
+        """Set default parameter value"""
+        self.ipt = iptgen(self.n)
+        self.integration_result()
+        self.threshold_integration()
+        self.generating_fbp()
+        self.analysis()
+
+    def _anytrait_changed(self, name, old, new):
+        """ """
+        if name == "sparsity":
+            self.integration_result()
+            self.threshold_integration()
+            self.select()
+            self.generating_fbp()
+            self.analysis()
+            #from pdb import set_trace; set_trace()
+
+    def integration_result(self):
+        """Generate the list of all possible integration result
+        and the associated parameter set
+        """
+        ipt = np.rot90(self.ipt)
+        w_min = self.w_min
+        w_max = self.w_max
+        n = self.n
+        order = self.order
+
+        #Generate all possible set of vectors
+        if order:
+            self.weights = np.array([i for i in prod(range(w_min, w_max+1), repeat=n)],
+                                dtype=np.int)
+        else:
+            self.weights = np.array([i for i in comb(range(w_min, w_max+1), n)],
+                                dtype=np.int)
+        self.integration = np.dot(self.weights, ipt)
+
+    def threshold_integration(self):
+        """Threshold the result of an integration and output the result"""
+        integration = self.integration
+        weights = self.weights
+        t_min = self.t_min
+        t_max = self.t_max
+        int_0 = integration.shape[0]
+        int_1 = integration.shape[1]
+        #Because lists end one time before the max_threshold
+        n_threshold = t_max - t_min + 1
+        functions = np.zeros((int_0 * n_threshold,
+                              int_1), dtype=np.int)
+        parameters = np.zeros((int_0 * n_threshold,
+                               weights.shape[1] + 1), dtype=np.int)
+        for i in range(t_min, t_max + 1):
+            thresholds = np.ones((weights.shape[0],1)) * i
+            i_s = i - t_min
+            parameters[i_s*int_0:(i_s+1)*int_0,:] = np.concatenate((weights, thresholds), axis=1)
+            functions[i_s*int_0:(i_s+1)*int_0,:] = integration >= i
+
+        self.functions, self.parameters = uniquify_function(functions, parameters)
+
+    def generating_fbp(self):
+        """generate the fbp function whatever the size of
+        the vector to be classified"""
+        n = self.n
+        s = self.sparsity
+        exp0 = r"[0-1]{%d}1{%d}"%(n/2, n/2)
+        exp1 = r"1{%d}[0-1]{%d}"%(n/2, n/2)
+        ipt = np.arange(2**n)
+        if self.sparsity >= 0:
+            ipt = ipt[select_subset(n, s)]
+        fbp = np.zeros(len(ipt), dtype=np.int)
+        for i, cipt in enumerate(ipt):
+            bin_i = np.binary_repr(cipt, n)
+            if re.match(exp0, bin_i):
+                fbp[i] = 1
+            if re.match(exp1, bin_i):
+                fbp[i] = 1
+        self.fbp = fbp
+
+    def analysis(self):
+        couples = []
+        for i in self.functions:
+            couples.append(signal_theory_analysis(self.fbp, i))
+        self.couples = np.unique(couples)
+
+    def select_subset(self):
+        """Select a subset of input of a given sparsity
+        """
+        selection = np.sum(self.ipt, axis=1) == self.sparsity
+        return selection
+
+    def select(self):
+        """Create a list for selecting the column in the set of functions"""
+        selection = self.select_subset()
+        parameters = self.parameters
+        sel = [i for i, test in enumerate(selection) if test]
+        self.functions, self.parameters = uniquify_function(self.functions[:, sel], parameters)
+
+    def show(self):
+        fig = plt.figure()
+        ax = fig.add_subplot(1, 1, 1)
+        plt.scatter(self.couples[:, 0], self.couples[:, 1], marker='s')
+        ax.set_xlim(0,1)
+        ax.set_ylim(0,1)
+        ax.set_xlabel('False Alarm')
+        ax.set_ylabel('Hits')
