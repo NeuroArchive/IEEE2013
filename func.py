@@ -7,13 +7,12 @@ import re
 
 
 def iptgen(n):
-    """Generate a set of input vector with n components and containing
-    equal/different number of ones given ex
+    """Generate the complete set of vector with n components
 
     Parameters
     ----------
     n : int
-        number of components in each vectors
+        size of all vectors
 
     Returns
     -------
@@ -25,9 +24,12 @@ def iptgen(n):
 
 
 def uniquify_function(functions, parameters):
-    """uniquify the list of function and the associated parameters
-    take from a stackoverflow thread"""
-    temp = np.ascontiguousarray(functions).view(np.dtype((np.void, functions.dtype.itemsize * functions.shape[1])))
+    """Uniquify the list of function and the associated parameters
+    taken from a stackoverflow thread"""
+    #Uniquifying is faster if the array is contiguous
+    temp = np.ascontiguousarray(functions)
+    temp = temp.view(np.dtype((np.void,
+                               functions.dtype.itemsize * functions.shape[1])))
     _, idx = np.unique(temp, return_index=True)
 
     functions = functions[idx]
@@ -35,7 +37,8 @@ def uniquify_function(functions, parameters):
 
     return functions, parameters
 
-def signal_theory_analysis(ftar,f):
+
+def signal_theory_analysis(ftar, f):
     """Return the (hits, false alarm) couple given a target
     classification
 
@@ -53,15 +56,16 @@ def signal_theory_analysis(ftar,f):
     matt : a float between -1 and 1"""
     #Use the binarity of the vector to detect the differences
     tp = np.array(ftar)*2 - f
-    TN = len(np.repeat(tp,tp==0))
-    FN = len(np.repeat(tp,tp==2))
-    TP = len(np.repeat(tp,tp==1))
-    FP = len(np.repeat(tp,tp==-1))
+    TN = len(np.repeat(tp, tp == 0))
+    FN = len(np.repeat(tp, tp == 2))
+    TP = len(np.repeat(tp, tp == 1))
+    FP = len(np.repeat(tp, tp == -1))
 
     spe = float(TN)/(TN+FP)
     sen = float(TP)/(TP+FN)
 
     return 1-spe, sen
+
 
 def select_subset(n, sparsity):
     """Select a subset of input of a given sparsity
@@ -78,9 +82,11 @@ def select_subset(n, sparsity):
     selection = np.sum(ipt, axis=1) == sparsity
     return selection
 
+
 def select_functions(selection):
     """Create a list for selecting the column in the set of functions"""
     return [i for i, test in enumerate(selection) if test]
+
 
 class PossibleSetTlu(HasTraits):
     """Wrapper of the different functions"""
@@ -125,11 +131,13 @@ class PossibleSetTlu(HasTraits):
 
         #Generate all possible set of vectors
         if order:
-            self.weights = np.array([i for i in prod(range(w_min, w_max+1), repeat=n)],
-                                dtype=np.int)
+            self.weights = np.array([i for i in prod(range(w_min, w_max+1),
+                                                     repeat=n)],
+                                    dtype=np.int)
         else:
-            self.weights = np.array([i for i in comb(range(w_min, w_max+1), n)],
-                                dtype=np.int)
+            self.weights = np.array([i for i in comb(range(w_min, w_max+1),
+                                                     n)],
+                                    dtype=np.int)
         self.integration = np.dot(self.weights, ipt)
 
     def threshold_integration(self):
@@ -144,23 +152,25 @@ class PossibleSetTlu(HasTraits):
         n_threshold = t_max - t_min + 1
         functions = np.zeros((int_0 * n_threshold,
                               int_1), dtype=np.int)
-        parameters = np.zeros((int_0 * n_threshold,
-                               weights.shape[1] + 1), dtype=np.int)
+        par = np.zeros((int_0 * n_threshold,
+                        weights.shape[1] + 1), dtype=np.int)
         for i in range(t_min, t_max + 1):
-            thresholds = np.ones((weights.shape[0],1)) * i
+            thresholds = np.ones((weights.shape[0], 1)) * i
             i_s = i - t_min
-            parameters[i_s*int_0:(i_s+1)*int_0,:] = np.concatenate((weights, thresholds), axis=1)
-            functions[i_s*int_0:(i_s+1)*int_0,:] = integration >= i
+            par[i_s*int_0:(i_s+1)*int_0, :] = np.concatenate((weights,
+                                                              thresholds),
+                                                             axis=1)
+            functions[i_s*int_0:(i_s+1)*int_0, :] = integration >= i
 
-        self.functions, self.parameters = uniquify_function(functions, parameters)
+        self.functions, self.parameters = uniquify_function(functions, par)
 
     def generating_fbp(self):
         """generate the fbp function whatever the size of
         the vector to be classified"""
         n = self.n
         s = self.sparsity
-        exp0 = r"[0-1]{%d}1{%d}"%(n/2, n/2)
-        exp1 = r"1{%d}[0-1]{%d}"%(n/2, n/2)
+        exp0 = r"[0-1]{%d}1{%d}" % (n/2, n/2)
+        exp1 = r"1{%d}[0-1]{%d}" % (n/2, n/2)
         ipt = np.arange(2**n)
         if self.sparsity >= 0:
             ipt = ipt[select_subset(n, s)]
@@ -188,15 +198,16 @@ class PossibleSetTlu(HasTraits):
     def select(self):
         """Create a list for selecting the column in the set of functions"""
         selection = self.select_subset()
-        parameters = self.parameters
+        par = self.parameters
         sel = [i for i, test in enumerate(selection) if test]
-        self.functions, self.parameters = uniquify_function(self.functions[:, sel], parameters)
+        self.functions, self.parameters = uniquify_function(self.functions[:, sel],
+                                                            par)
 
     def show(self):
         fig = plt.figure()
         ax = fig.add_subplot(1, 1, 1)
         plt.scatter(self.couples[:, 0], self.couples[:, 1], marker='s')
-        ax.set_xlim(0,1)
-        ax.set_ylim(0,1)
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
         ax.set_xlabel('False Alarm')
         ax.set_ylabel('Hits')
