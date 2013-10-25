@@ -282,3 +282,4 @@ class PossibleSetTlu(HasTraits):
         ax.set_ylim(0, 1)
         ax.set_xlabel('False Alarm')
         ax.set_ylabel('Hits')
+        plt.savefig('temp_fig.svg', transparent=True)
